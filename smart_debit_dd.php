@@ -27,8 +27,9 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
    * mode of operation: live or test
    *
    * @var object
+   * @static
    */
-  protected $_mode = null;
+  static protected $_mode = null;
 
   /**
    * Constructor
@@ -51,7 +52,7 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
    * @static
    *
    */
-  static function &singleton( $mode, &$paymentProcessor, &$paymentForm = NULL, $force = FALSE ) {
+  static function &singleton( $mode, &$paymentProcessor ) {
       $processorName = $paymentProcessor['name'];
       if (self::$_singleton[$processorName] === null ) {
           self::$_singleton[$processorName] = new self( $mode, $paymentProcessor );
@@ -86,32 +87,7 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
     }
   }
 
-  function smart_debit_dd_civicrm_config( &$config ) {
-
-      $template =& CRM_Core_Smarty::singleton( );
-
-      $batchingRoot = dirname( __FILE__ );
-
-      $batchingDir = $batchingRoot . DIRECTORY_SEPARATOR . 'templates';
-
-      if ( is_array( $template->template_dir ) ) {
-          array_unshift( $template->template_dir, $batchingDir );
-      } else {
-          $template->template_dir = array( $batchingDir, $template->template_dir );
-      }
-
-      // also fix php include path
-      $include_path = $batchingRoot . PATH_SEPARATOR . get_include_path( );
-      set_include_path( $include_path );
-
-  }
-
-  function smart_debit_dd_civicrm_xmlMenu( &$files ) {
-    $files[] = dirname(__FILE__)."/xml/Menu/CustomTestForm.xml";
-  }
-
-
-  static function getUserEmail( &$params ) {
+  function getUserEmail( &$params ) {
     // Set email
     if ( !empty( $params['email-Primary'] ) ) {
       $useremail = $params['email-Primary'];
@@ -133,7 +109,7 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
    * We also may need to send them a letter etc
    *
    */
-  static function getCollectionStartDate( &$params ) {
+  function getCollectionStartDate( &$params ) {
 
     $preferredCollectionDay = $params['preferred_collection_day'];
 
@@ -145,7 +121,7 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
    * Should check the [frequency_unit] and if set use that
    * If not set then default to D
    */
-  static function getCollectionFrequency( &$params ) {
+  function getCollectionFrequency( &$params ) {
     $frequencyUnit = $params['frequency_unit'];
 
     if ( strtolower( $frequencyUnit ) == 'year' ) {
@@ -158,11 +134,8 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
     return $collectionFrequency;
   }
 
-  static function replaceCommaWithSpace( $pString ) {
-    return str_replace( ',', ' ', $pString );
-  }
+  function preparePostArray( $fields, $self = null ) {
 
-  static function preparePostArray( $fields, $self = null ) {
     /*
      * TO DO
      * Promotion - Need to get the page ID
@@ -192,9 +165,8 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
 
     if ( isset( $fields['contactID'] ) ) {
         $payerReference = $fields['contactID'];
-    } elseif ( isset( $fields['cms_contactID'] ) ) {
-      $payerReference = $fields['cms_contactID'];
-    } else {
+    }
+    else {
         $payerReference = 'CIVICRMEXT';
     }
 
@@ -206,8 +178,8 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
       'variable_ddi[payer_reference]'     => $payerReference,
       'variable_ddi[first_name]'          => $fields['billing_first_name'],
       'variable_ddi[last_name]'           => $fields['billing_last_name'],
-      'variable_ddi[address_1]'           => self::replaceCommaWithSpace( $fields['billing_street_address-5'] ),
-      'variable_ddi[town]'                => self::replaceCommaWithSpace( $fields['billing_city-5'] ),
+      'variable_ddi[address_1]'           => $fields['billing_street_address-5'],
+      'variable_ddi[town]'                => $fields['billing_city-5'],
       'variable_ddi[postcode]'            => $fields['billing_postal_code-5'],
       'variable_ddi[country]'             => $fields['billing_country_id-5'], //*** $params['billing_country-5']
       'variable_ddi[account_name]'        => $fields['account_holder'],
@@ -219,8 +191,7 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
       'variable_ddi[start_date]'          => $collectionDate->format("Y-m-d"),
 //      'variable_ddi[promotion]'           => $fields['page_id'], //*** contributionPageID
       'variable_ddi[email_address]'       => self::getUserEmail( $fields ),
-      // RS: We dont need to send company name to Smat debit API
-      //'variable_ddi[company_name]'        => UK_Direct_Debit_Form_Main::getDomainName(),
+      'variable_ddi[company_name]'        => UK_Direct_Debit_Form_Main::getDomainName(),
       'variable_ddi[frequency_type]'      => self::getCollectionFrequency( $fields )
     );
 
@@ -241,7 +212,7 @@ class uk_co_vedaconsulting_payment_smartdebitdd extends CRM_Core_Payment {
    *
    */
 
-  static function validatePayment( $fields, $files, $self ) {
+  function validatePayment( $fields, $files, $self ) {
 
     $validateParams = $fields;
 //    $validateParams['bank_account_number'] = null;
@@ -427,7 +398,7 @@ CRM_Core_Error::debug_log_message('UK_Direct_Debit_Form_Main.succeed response[re
    * @param $params
    * @return array
    */
-  static private function invalid( $response, $params ) {
+  private function invalid( $response, $params ) {
     $msg = "Unfortunately, it seems the details provided are invalid – please double check your billing address and direct debit details and try again.";
     $msg .= "<ul>";
 
@@ -544,8 +515,7 @@ CRM_Core_Error::debug_log_message('UK_Direct_Debit_Form_Main.succeed response[re
 */
 
   function buildForm( &$form ) {
-    $ddForm = new UK_Direct_Debit_Form_Main();
-    $ddForm->buildDirectDebit( $form );
+    UK_Direct_Debit_Form_Main::buildDirectDebit( $form );
 
     $form->addFormRule( array( 'uk_co_vedaconsulting_payment_smartdebitdd', 'validatePayment' ), $form );
     if (self::getCRMVersion() >= 4.2) {
@@ -654,142 +624,4 @@ CRM_Core_Error::debug_log_message( '$_POST[]:' . print_r( $_POST, true ) );
     }
   }
 
-  function changeSubscriptionAmount(&$message = '', $params = array()) {
-    if ($this->_paymentProcessor['payment_processor_type'] == 'Smart Debit') {
-      $post = '';
-      $serviceUserId    = $this->_paymentProcessor['signature'];
-      $username         = $this->_paymentProcessor['user_name'];
-      $password         = $this->_paymentProcessor['password'];
-      $url              = $this->_paymentProcessor['url_api'];
-      $accountHolder    = $params['account_holder'];
-      $accountNumber    = $params['bank_account_number'];
-      $sortcode         = $params['bank_identification_number'];
-      $bankName         = $params['bank_name'];
-      $amount           = $params['amount'];
-      $amount           = $amount * 100;
-      $reference        = $params['subscriptionId'];
-      $frequencyType    = $params['frequency_unit'];
-      $eDate            = $params['end_date'];
-      $sDate            = $params['start_date'];
-      
-      if(!empty($eDate)) {
-        $endDate        = strtotime($eDate);
-        $endDate        = date("Y-m-d", $endDate);
-      }
-      
-      if(!empty($sDate)) {
-        $startDate        = strtotime($sDate);
-        $startDate        = date("Y-m-d", $startDate);
-      }
-      
-      $request_path     = 'api/ddi/variable/'.$reference.'/update';
-
-      $smartDebitParams = array(
-        'variable_ddi[service_user][pslid]' =>  $serviceUserId,
-        'variable_ddi[reference_number]'    =>  $reference,
-        'variable_ddi[regular_amount]'      =>  $amount,
-        'variable_ddi[first_amount]'        =>  $amount,
-        'variable_ddi[default_amount]'      =>  $amount,
-        'variable_ddi[start_date]'          =>  $startDate,
-        'variable_ddi[end_date]'            =>  $endDate,
-        'variable_ddi[account_name]'        =>  $accountHolder,
-        'variable_ddi[sort_code]'           =>  $sortcode,
-        'variable_ddi[account_number]'      =>  $accountNumber,
-        'variable_ddi[frequency_type]'      =>  $frequencyType
-      );
-
-      foreach ( $smartDebitParams as $key => $value ) {
-        if(!empty($value))
-          $post .= ( $key != 'variable_ddi[service_user][pslid]' ? '&' : '' ) . $key . '=' . ( $key != 'variable_ddi[service_user][pslid]' ? urlencode( $value ) : $serviceUserId );
-      }
-
-      $response = requestPost( $url, $post, $username, $password, $request_path );
- 
-      if(strtoupper($response["Status"]) == 'INVALID') {
-        if(!is_array($response['error'])) {
-          CRM_Core_Session::setStatus(ts($response['error'].'<br /> <br />Please correct the error and try again'), 'Validation Error', 'error');
-          return FALSE;
-        }
-        else 
-        {
-          $errors = $response['error'];
-          foreach ($errors as $error) {
-            $message .=$error.'<br />'; 
-          }
-          CRM_Core_Session::setStatus(ts($message.'<br /> Please correct the errors and try again'), 'Validation Errors', 'error');
-          return FALSE;
-        }
-      }
-      return TRUE;
-    }
-  } 
-  
-  function cancelSubscription(&$message = '', $params = array()) {
-    if ($this->_paymentProcessor['payment_processor_type'] == 'Smart Debit') {
-      $post = '';
-      $serviceUserId    = $this->_paymentProcessor['signature'];
-      $username         = $this->_paymentProcessor['user_name'];
-      $password         = $this->_paymentProcessor['password'];
-      $url              = $this->_paymentProcessor['url_api'];
-      $reference        = $params['subscriptionId'];
-      $request_path     = 'api/ddi/variable/'.$reference.'/cancel';
-      $smartDebitParams = array(
-        'variable_ddi[service_user][pslid]' =>  $serviceUserId,
-        'variable_ddi[reference_number]'    =>  $reference,
-      );
-      foreach ( $smartDebitParams as $key => $value ) {
-        $post .= ( $key != 'variable_ddi[service_user][pslid]' ? '&' : '' ) . $key . '=' . ( $key != 'variable_ddi[service_user][pslid]' ? urlencode( $value ) : $serviceUserId );
-      }
-    
-      $response = requestPost( $url, $post, $username, $password, $request_path );
-      if(strtoupper($response["Status"]) != 'OK') {
-        CRM_Core_Session::setStatus(ts('Unknown System Error.'));
-        return FALSE;
-      }
-      return TRUE;
-    }
-  }
-  
-  function updateSubscriptionBillingInfo(&$message = '', $params = array()) {
-    if ($this->_paymentProcessor['payment_processor_type'] == 'Smart Debit') {
-      
-      CRM_Core_Error::debug_log_message( 'updateSubscriptionBillingInfo $params= '. print_r($params, true), $out = false );
-      $post = '';
-      $serviceUserId    = $this->_paymentProcessor['signature'];
-      $username         = $this->_paymentProcessor['user_name'];
-      $password         = $this->_paymentProcessor['password'];
-      $url              = $this->_paymentProcessor['url_api'];
-      $reference        = $params['subscriptionId'];
-      $firstName        = $params['first_name'];
-      $lastName         = $params['last_name'];
-      $streetAddress    = $params['street_address'];
-      $city             = $params['city'];
-      $postcode         = $params['postal_code'];
-      $state            = $params['state_province'];
-      $country          = $params['country'];
-      
-      
-      $request_path     = 'api/ddi/variable/'.$reference.'/update';
-      $smartDebitParams = array(
-        'variable_ddi[service_user][pslid]' => $serviceUserId,
-        'variable_ddi[reference_number]'    => $reference,
-        'variable_ddi[first_name]'          => $firstName,
-        'variable_ddi[last_name]'           => $lastName,
-        'variable_ddi[address_1]'           => self::replaceCommaWithSpace($streetAddress),
-        'variable_ddi[town]'                => $city,
-        'variable_ddi[postcode]'            => $postcode,
-        'variable_ddi[country]'             => $country,
-      );
-      foreach ( $smartDebitParams as $key => $value ) {
-        $post .= ( $key != 'variable_ddi[service_user][pslid]' ? '&' : '' ) . $key . '=' . ( $key != 'variable_ddi[service_user][pslid]' ? urlencode( $value ) : $serviceUserId );
-      }
-    
-      $response = requestPost( $url, $post, $username, $password, $request_path );
-      if(strtoupper($response["Status"]) != 'OK') {
-        CRM_Core_Session::setStatus(ts('Unfortunately, it seems the authorisation was a rejected – please double check your billing address and try again.'));
-        return FALSE;
-      }
-      return TRUE;
-    }
-  }
 }
